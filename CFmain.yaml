@@ -1,0 +1,315 @@
+AWSTemplateFormatVersion: "2010-09-09" # AWS CF version
+
+Parameters:
+  KeyName:
+    Description: EC2 Key Pair
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    Default:  #In here you can input your key.pem file name, EX: "name123"
+
+Resources: # The resources that will be generated
+  VPC: # Virtual private cloud
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16 # IP address range
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: # Tags including name that the vpc will have
+        - Key: Name
+          Value: vpc-ansibleTEST
+
+  InternetGateway: # This enables the connection to an EC2 instance using the local computer
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: igw-ansibleTEST
+
+  AttachGateway: #This attatch the Internet gateway to the VPC we created
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1: # Public subnet 1, the resources made here, like the EC2 will have public IP
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC # Will create the subnet inside the VPC
+      CidrBlock: 10.0.0.0/24 # The IP address range of the subnet
+      MapPublicIpOnLaunch: true # This enables the public IP on launch for the resources within the public subnet
+      AvailabilityZone: us-west-1b # Availability Zone of the subnet
+      Tags:
+        - Key: Name
+          Value: PlSN1-ansibleTEST
+
+  PublicSubnet2: # Public subnet 2, just like in the public subnet 1 just changing the availability zone
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: us-west-1c
+      Tags:
+        - Key: Name
+          Value: PlSN2-ansibleTEST
+
+  PrivateSubnet1: # Private subnet 1, in here you also need to specify the parameters as in the publics
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: false # This disables the public IP on launch for the resources in private subnet
+      AvailabilityZone: us-west-1b
+      Tags:
+        - Key: Name
+          Value: PrSN1-ansibleTEST
+
+  PrivateSubnet2: # Private subnet 2, like private subnet 1 just with the change in the availability zone
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: us-west-1c
+      Tags:
+        - Key: Name
+          Value: PrSN2-ansibleTEST
+
+  NatGateway1EIP: # This is to allocate elastic IPs in a VPC
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway 
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: NGW1e-ansibleTEST
+
+  NatGateway2EIP: # Allocate more elastic IPs
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: NGW2e-ansibleTEST
+
+  NatGateway1: # This enables the conecction between Internet/AWS services with the instances inside a private subnet
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: NGW1-ansibleTEST
+
+  NatGateway2: # Second nat gateway for the connection with the instances on private subnet
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: NGW2-ansibleTEST
+
+  PublicRouteTable: # It's for containing a set of rules (the routes) that are used to determine where the network traffic is directed
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PlRoutes-ansibleTEST
+
+  PublicRouteTableEntry: # This helps to specify a route in a route table within a VPC  
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicRouteTableSubnetAssociation1: # In here you associate the route table to the public subnet
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicRouteTableSubnetAssociation2: # Second route table association for the second public subnet
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable1: # just like the route table above, but this time for the private subnets
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PrRoutes1-ansibleTEST
+          
+  DefaultPrivateRoute1: # To specify the route in the private route tables 
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation: # Route table assosiation for the private table 1
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateRouteTable2: # For the private subnets you have a route table unlike the public subnets
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PrRoutes2-ansibleTEST
+
+  DefaultPrivateRoute2: # To specify the route in the private route tables 
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation: # Route table assosiation for the private table 2
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  JenksSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: ansibleTEST-jenkins
+      GroupDescription: Enable remote access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+  SSHSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: ansibleTEST-allow-ssh
+      GroupDescription: Enable ssh access for bastion-private
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+  bastionsInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      SecurityGroupIds:
+        - !GetAtt SSHSecurityGroup.GroupId
+      KeyName: !Ref KeyName
+      ImageId: ami-018d291ca9ffc002f
+      InstanceType: t2.micro
+      AvailabilityZone: us-west-1b
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: Bastion-ec2-ansibleTEST
+
+  jenkinsInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      SecurityGroupIds:
+        - !GetAtt SSHSecurityGroup.GroupId
+        - !GetAtt JenksSecurityGroup.GroupId
+      KeyName: !Ref KeyName
+      ImageId: ami-018d291ca9ffc002f
+      InstanceType: t2.small
+      AvailabilityZone: us-west-1b
+      SubnetId: !Ref PrivateSubnet1
+      Tags:
+        - Key: Name
+          Value: Jenkins1-ec2-ansibleTEST
+
+  JenkinsTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /login?from=%2F
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: '200'
+      Name: JenkTG-ansibleTEST
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: '100'
+      Targets:
+      - Id: !Ref jenkinsInstance
+        Port: 8080
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref VPC
+
+  LoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "ansibleTEST-ansiblebalancer"
+      GroupDescription: "ELB to allow HTTP traffic"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: ALB-ansibleTEST
+      Type: application
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !GetAtt LoadBalancerSG.GroupId
+
+  JenkListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref JenkinsTG
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  JenkListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: "redirect"
+          RedirectConfig:
+            Protocol: "HTTP"
+            Port: 80
+            Host: "#{host}"
+            Path: "/"
+            Query: ""
+            StatusCode: "HTTP_301"
+      Conditions:
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - /jenkins
+      ListenerArn: !Ref JenkListener
+      Priority: 2

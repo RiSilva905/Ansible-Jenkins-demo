@@ -1,0 +1,8 @@
+---
+- name: Save password
+  become: true
+  become_method: sudo
+  fetch:
+      src: /var/lib/jenkins/secrets/initialAdminPassword
+      dest: .pass/jenkins.txt
+      flat: yes

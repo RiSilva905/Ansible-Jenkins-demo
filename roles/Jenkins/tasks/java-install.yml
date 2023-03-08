@@ -1,0 +1,6 @@
+---
+- name: Update APT package manager repositories cache
+  yum:
+    update_cache: yes
+- name: Install Java using Ansible
+  command: amazon-linux-extras install java-openjdk11 -y

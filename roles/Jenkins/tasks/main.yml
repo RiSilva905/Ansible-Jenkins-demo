@@ -1,0 +1,5 @@
+---
+- include_tasks: java-install.yml
+- include_tasks: jenkins-install.yml
+- include_tasks: jenkins-service.yml
+- include_tasks: jenkins-pass.yml
